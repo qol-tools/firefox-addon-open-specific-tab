@@ -1,10 +1,5 @@
-// Track tabs that started blank (external opens) vs tabs created with URLs (restored)
-// Key: tabId, Value: { startedBlank: boolean, createdAt: number }
-const pendingTabs = new Map();
-
-function isBlankUrl(url) {
-  return !url || url === "about:blank" || url === "about:newtab" || url.startsWith("about:");
-}
+// Track tabs we've already handled to avoid duplicates
+const handledTabs = new Set();
 
 function getDomain(url) {
   try {
@@ -71,88 +66,40 @@ function findMatchingTab(newUrl, existingTabs) {
   return domainMatches[0];
 }
 
-browser.tabs.onCreated.addListener(async (tab) => {
-  const createdAt = Date.now();
-  const startedBlank = isBlankUrl(tab.url);
+// Primary method: intercept navigation before it completes
+browser.webNavigation.onBeforeNavigate.addListener(async (details) => {
+  if (details.frameId !== 0) return; // Only main frame
+  if (handledTabs.has(details.tabId)) return; // Already handled
   
-  // Only track tabs that started blank (external opens)
-  // Tabs created with URLs are likely restored - leave them alone
-  if (startedBlank) {
-    pendingTabs.set(tab.id, { startedBlank: true, createdAt });
-    // Poll for URL if not set immediately
-    pollForUrl(tab.id, 10);
-  }
-});
-
-browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  // ONLY act on tabs that started blank and now have a URL with reuse flag
-  const tabInfo = pendingTabs.get(tabId);
-  if (tabInfo && tabInfo.startedBlank && changeInfo.url && tab.url && getDomain(tab.url) && hasReuseFlag(tab.url)) {
-    await handleTabReuse(tabId, tab.url);
-    pendingTabs.delete(tabId);
-  }
-});
-
-async function pollForUrl(tabId, maxAttempts) {
-  for (let i = 0; i < maxAttempts; i++) {
-    await new Promise(resolve => setTimeout(resolve, 100));
+  if (hasReuseFlag(details.url)) {
+    handledTabs.add(details.tabId);
     
-    try {
-      const tab = await browser.tabs.get(tabId);
-      if (tab.url && getDomain(tab.url) && hasReuseFlag(tab.url)) {
-        await handleTabReuse(tab.id, tab.url);
-        return;
-      }
-    } catch (e) {
-      // Tab closed or doesn't exist
-      pendingTabs.delete(tabId);
+    const cleanUrl = removeReuseFlag(details.url);
+    const allTabs = await browser.tabs.query({});
+    const existingTabs = allTabs.filter(t => t.id !== details.tabId);
+    
+    // Check for exact URL match first
+    const exactMatch = existingTabs.find(t => t.url === cleanUrl);
+    if (exactMatch) {
+      await browser.tabs.update(exactMatch.id, { active: true });
+      await browser.windows.update(exactMatch.windowId, { focused: true });
+      await browser.tabs.remove(details.tabId);
+      setTimeout(() => handledTabs.delete(details.tabId), 5000);
       return;
     }
-  }
-  
-  // Give up after max attempts
-  pendingTabs.delete(tabId);
-}
-
-async function handleTabReuse(newTabId, newUrl) {
-  // Remove the reuse flag to get the target URL
-  const cleanUrl = removeReuseFlag(newUrl);
-  
-  // Get all existing tabs (excluding the new one and other pending tabs)
-  const allTabs = await browser.tabs.query({});
-  const existingTabs = allTabs.filter(t => 
-    t.id !== newTabId && !pendingTabs.has(t.id)
-  );
-
-  // Check for exact URL match first
-  const exactMatch = existingTabs.find(t => t.url === cleanUrl);
-  if (exactMatch) {
-    await browser.tabs.update(exactMatch.id, { active: true });
-    await browser.windows.update(exactMatch.windowId, { focused: true });
-    await browser.tabs.remove(newTabId);
-    pendingTabs.delete(newTabId);
-    return;
-  }
-
-  // Otherwise use domain/path matching
-  const target = findMatchingTab(cleanUrl, existingTabs);
-
-  if (target) {
-    // Focus existing tab, don't navigate it
-    await browser.tabs.update(target.id, { active: true });
-    await browser.windows.update(target.windowId, { focused: true });
     
-    // Close the new one
-    try {
-      await browser.tabs.remove(newTabId);
-      pendingTabs.delete(newTabId);
-    } catch (e) {
-      // Tab might already be closed
-      pendingTabs.delete(newTabId);
+    // Otherwise use domain/path matching
+    const target = findMatchingTab(cleanUrl, existingTabs);
+    if (target) {
+      await browser.tabs.update(target.id, { active: true });
+      await browser.windows.update(target.windowId, { focused: true });
+      await browser.tabs.remove(details.tabId);
+      setTimeout(() => handledTabs.delete(details.tabId), 5000);
+      return;
     }
-  } else {
-    // No match found, open the target URL (remove the flag)
-    await browser.tabs.update(newTabId, { url: cleanUrl });
-    pendingTabs.delete(newTabId);
+    
+    // No match found, navigate to clean URL (remove the flag)
+    await browser.tabs.update(details.tabId, { url: cleanUrl });
+    setTimeout(() => handledTabs.delete(details.tabId), 5000);
   }
-}
+});

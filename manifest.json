@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Tab Reuse",
   "version": "1.0",
-  "permissions": ["tabs"],
+  "permissions": ["tabs", "webNavigation"],
   "background": {
     "scripts": ["background.js"]
   }
