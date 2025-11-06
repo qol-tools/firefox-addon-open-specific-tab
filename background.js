@@ -54,6 +54,18 @@ function normalizeUrlForComparison(url) {
   }
 }
 
+function isRootUrl(url) {
+  try {
+    const urlObj = new URL(url);
+    const pathname = urlObj.pathname;
+    const search = urlObj.search;
+    // Root URL if pathname is empty or just "/", and no search params
+    return (pathname === '' || pathname === '/') && search === '';
+  } catch (e) {
+    return false;
+  }
+}
+
 async function handleTabReuse(tabId, url) {
   if (handledTabs.has(tabId)) return;
   handledTabs.add(tabId);
@@ -63,7 +75,7 @@ async function handleTabReuse(tabId, url) {
   const allTabs = await browser.tabs.query({});
   const existingTabs = allTabs.filter(t => t.id !== tabId);
   
-  // Only reuse tab if normalized URL matches
+  // Check for exact URL match first
   const exactMatch = existingTabs.find(t => {
     if (!t.url) return false;
     const normalizedTabUrl = normalizeUrlForComparison(t.url);
@@ -77,7 +89,25 @@ async function handleTabReuse(tabId, url) {
     return;
   }
   
-  // No exact match found, navigate to clean URL (remove the flag)
+  // If the URL is just the root domain, match any tab on that domain
+  if (isRootUrl(cleanUrl)) {
+    const domain = getDomain(cleanUrl);
+    if (domain) {
+      const domainMatch = existingTabs.find(t => {
+        if (!t.url) return false;
+        return getDomain(t.url) === domain;
+      });
+      if (domainMatch) {
+        await browser.tabs.update(domainMatch.id, { active: true });
+        await browser.windows.update(domainMatch.windowId, { focused: true });
+        await browser.tabs.remove(tabId);
+        setTimeout(() => handledTabs.delete(tabId), 5000);
+        return;
+      }
+    }
+  }
+  
+  // No match found, navigate to clean URL (remove the flag)
   await browser.tabs.update(tabId, { url: cleanUrl });
   setTimeout(() => handledTabs.delete(tabId), 5000);
 }
