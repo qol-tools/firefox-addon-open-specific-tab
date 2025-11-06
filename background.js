@@ -38,68 +38,72 @@ function removeReuseFlag(url) {
   }
 }
 
-function findMatchingTab(newUrl, existingTabs) {
-  const newDomain = getDomain(newUrl);
-  if (!newDomain) return null;
-
-  const newPath = getUrlPath(newUrl);
-  
-  // Find all tabs with matching domain
-  const domainMatches = existingTabs.filter(t => {
-    if (!t.url) return false;
-    const tabDomain = getDomain(t.url);
-    return tabDomain === newDomain;
-  });
-
-  if (domainMatches.length === 0) return null;
-
-  // If multiple matches, try to find exact path match first
-  if (domainMatches.length > 1 && newPath) {
-    const exactMatch = domainMatches.find(t => {
-      const tabPath = getUrlPath(t.url);
-      return tabPath === newPath;
-    });
-    if (exactMatch) return exactMatch;
+function normalizeUrlForComparison(url) {
+  try {
+    const urlObj = new URL(url);
+    // Remove trailing slash from pathname (except root)
+    let pathname = urlObj.pathname;
+    if (pathname.length > 1 && pathname.endsWith('/')) {
+      pathname = pathname.slice(0, -1);
+    }
+    // Reconstruct URL with normalized pathname
+    const normalized = `${urlObj.protocol}//${urlObj.hostname.toLowerCase()}${pathname}${urlObj.search}`;
+    return normalized;
+  } catch (e) {
+    return url;
   }
+}
 
-  // Otherwise return first match
-  return domainMatches[0];
+async function handleTabReuse(tabId, url) {
+  if (handledTabs.has(tabId)) return;
+  handledTabs.add(tabId);
+  
+  const cleanUrl = removeReuseFlag(url);
+  const normalizedCleanUrl = normalizeUrlForComparison(cleanUrl);
+  const allTabs = await browser.tabs.query({});
+  const existingTabs = allTabs.filter(t => t.id !== tabId);
+  
+  // Only reuse tab if normalized URL matches
+  const exactMatch = existingTabs.find(t => {
+    if (!t.url) return false;
+    const normalizedTabUrl = normalizeUrlForComparison(t.url);
+    return normalizedTabUrl === normalizedCleanUrl;
+  });
+  if (exactMatch) {
+    await browser.tabs.update(exactMatch.id, { active: true });
+    await browser.windows.update(exactMatch.windowId, { focused: true });
+    await browser.tabs.remove(tabId);
+    setTimeout(() => handledTabs.delete(tabId), 5000);
+    return;
+  }
+  
+  // No exact match found, navigate to clean URL (remove the flag)
+  await browser.tabs.update(tabId, { url: cleanUrl });
+  setTimeout(() => handledTabs.delete(tabId), 5000);
 }
 
 // Primary method: intercept navigation before it completes
 browser.webNavigation.onBeforeNavigate.addListener(async (details) => {
   if (details.frameId !== 0) return; // Only main frame
-  if (handledTabs.has(details.tabId)) return; // Already handled
-  
   if (hasReuseFlag(details.url)) {
-    handledTabs.add(details.tabId);
-    
-    const cleanUrl = removeReuseFlag(details.url);
-    const allTabs = await browser.tabs.query({});
-    const existingTabs = allTabs.filter(t => t.id !== details.tabId);
-    
-    // Check for exact URL match first
-    const exactMatch = existingTabs.find(t => t.url === cleanUrl);
-    if (exactMatch) {
-      await browser.tabs.update(exactMatch.id, { active: true });
-      await browser.windows.update(exactMatch.windowId, { focused: true });
-      await browser.tabs.remove(details.tabId);
-      setTimeout(() => handledTabs.delete(details.tabId), 5000);
-      return;
-    }
-    
-    // Otherwise use domain/path matching
-    const target = findMatchingTab(cleanUrl, existingTabs);
-    if (target) {
-      await browser.tabs.update(target.id, { active: true });
-      await browser.windows.update(target.windowId, { focused: true });
-      await browser.tabs.remove(details.tabId);
-      setTimeout(() => handledTabs.delete(details.tabId), 5000);
-      return;
-    }
-    
-    // No match found, navigate to clean URL (remove the flag)
-    await browser.tabs.update(details.tabId, { url: cleanUrl });
-    setTimeout(() => handledTabs.delete(details.tabId), 5000);
+    await handleTabReuse(details.tabId, details.url);
+  }
+});
+
+// Fallback: handle tabs created with URL already set
+browser.tabs.onCreated.addListener(async (tab) => {
+  if (tab.url && getDomain(tab.url) && hasReuseFlag(tab.url)) {
+    await handleTabReuse(tab.id, tab.url);
+  }
+});
+
+// Fallback: handle tabs that get URL set after creation
+browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.url && tab.url && getDomain(tab.url) && hasReuseFlag(tab.url)) {
+    // Only act on recent tabs (created within last 2 seconds) to avoid interfering with normal navigation
+    const tabInfo = await browser.tabs.get(tabId);
+    // Use a simple check: if URL just changed and has flag, handle it
+    // The handledTabs set prevents duplicates
+    await handleTabReuse(tabId, tab.url);
   }
 });
