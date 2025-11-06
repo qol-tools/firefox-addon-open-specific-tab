@@ -6,7 +6,9 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "tab-reuse@kmrh47.github.io",
-      "data_collection_permissions": {}
+      "data_collection_permissions": {
+        "required": []
+      }
     }
   },
   "background": {
