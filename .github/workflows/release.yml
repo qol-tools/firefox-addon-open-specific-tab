@@ -14,7 +14,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v3
         with:
-          node-version: '18'
+          node-version: '20'
       
       - name: Install web-ext
         run: npm install -g web-ext
@@ -27,6 +27,7 @@ jobs:
           web-ext sign \
             --api-key="$MOZILLA_API_KEY" \
             --api-secret="$MOZILLA_API_SECRET" \
+            --channel=unlisted \
             --source-dir=. \
             --artifacts-dir=./web-ext-artifacts
       

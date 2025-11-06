@@ -26,6 +26,7 @@ echo "Building and signing addon..."
 web-ext sign \
     --api-key="$MOZILLA_API_KEY" \
     --api-secret="$MOZILLA_API_SECRET" \
+    --channel=unlisted \
     --source-dir=. \
     --artifacts-dir=./web-ext-artifacts
 
