@@ -5,7 +5,8 @@
   "permissions": ["tabs", "webNavigation"],
   "browser_specific_settings": {
     "gecko": {
-      "id": "tab-reuse@kmrh47.github.io"
+      "id": "tab-reuse@kmrh47.github.io",
+      "data_collection_permissions": []
     }
   },
   "background": {

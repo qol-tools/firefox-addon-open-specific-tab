@@ -27,6 +27,7 @@ web-ext sign \
     --api-key="$MOZILLA_API_KEY" \
     --api-secret="$MOZILLA_API_SECRET" \
     --channel=unlisted \
+    --ignore-files="build.sh" ".github/**" "README.md" ".gitignore" ".web-extignore" \
     --source-dir=. \
     --artifacts-dir=./web-ext-artifacts
 
