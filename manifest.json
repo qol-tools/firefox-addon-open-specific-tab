@@ -3,6 +3,11 @@
   "name": "Tab Reuse",
   "version": "1.0",
   "permissions": ["tabs", "webNavigation"],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "tab-reuse@kmrh47.github.io"
+    }
+  },
   "background": {
     "scripts": ["background.js"]
   }
