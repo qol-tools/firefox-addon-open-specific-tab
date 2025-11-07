@@ -22,15 +22,6 @@ open -a "Firefox" "https://example.com/page?__reuse_tab=1"
 4. Download the signed `.xpi` from the Releases page
 5. Open the `.xpi` file in Firefox to install
 
-### Auto-Install on New Machines/Profiles
-
-Firefox Sync doesn't sync unlisted addons. To auto-install on new machines:
-
-**Run once per machine:**
-```bash
-./setup-auto-install.sh
-```
-
-This configures Firefox Enterprise Policies to automatically install the addon for all profiles on that machine. After running this script, any Firefox profile (including new ones via Sync) will automatically get the addon installed.
-
 The addon persists across restarts and is signed by Mozilla.
+
+**Note:** Firefox Sync doesn't sync unlisted addons. You'll need to manually install on new machines.
