@@ -22,21 +22,15 @@ open -a "Firefox" "https://example.com/page?__reuse_tab=1"
 4. Download the signed `.xpi` from the Releases page
 5. Open the `.xpi` file in Firefox to install
 
-### Auto-Install on New Firefox Profiles
+### Auto-Install on New Machines/Profiles
 
-Since Firefox Sync doesn't sync unlisted addons, use one of these methods:
+Firefox Sync doesn't sync unlisted addons. To auto-install on new machines:
 
-**Option 1: Bookmark the installer page**
-1. Open `install.html` in Firefox (or host it somewhere)
-2. Bookmark it
-3. On new Firefox profiles, open the bookmark and click "Install Addon"
+**Run once per machine:**
+```bash
+./setup-auto-install.sh
+```
 
-**Option 2: Direct XPI link**
-1. Get the direct download URL from GitHub Releases (right-click `.xpi` ? Copy link)
-2. Bookmark that URL
-3. Open it in Firefox on new profiles
-
-**Option 3: Firefox Enterprise Policies** (advanced)
-Create `autoconfig.js` and `mozilla.cfg` in Firefox profile directory to auto-install from URL. See Firefox Enterprise documentation.
+This configures Firefox Enterprise Policies to automatically install the addon for all profiles on that machine. After running this script, any Firefox profile (including new ones via Sync) will automatically get the addon installed.
 
 The addon persists across restarts and is signed by Mozilla.
