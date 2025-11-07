@@ -2,3 +2,5 @@ build.sh
 .github/
 README.md
 .gitignore
+install.html
+

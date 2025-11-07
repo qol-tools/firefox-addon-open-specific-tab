@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Install Tab Reuse Addon</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      max-width: 600px;
+      margin: 50px auto;
+      padding: 20px;
+      text-align: center;
+    }
+    .install-btn {
+      display: inline-block;
+      padding: 12px 24px;
+      background: #0060df;
+      color: white;
+      text-decoration: none;
+      border-radius: 4px;
+      margin: 20px 0;
+      font-size: 16px;
+    }
+    .install-btn:hover {
+      background: #003eaa;
+    }
+    .loading {
+      color: #666;
+    }
+  </style>
+</head>
+<body>
+  <h1>Tab Reuse Addon Installer</h1>
+  <div id="content">
+    <p class="loading">Finding latest release...</p>
+  </div>
+  <p><small>Bookmark this page for easy reinstallation on new Firefox profiles.</small></p>
+  
+  <script>
+    // Fetch latest release and find XPI file
+    fetch('https://api.github.com/repos/KMRH47/firefox-addon-open-specific-tab/releases/latest')
+      .then(r => r.json())
+      .then(release => {
+        const xpiAsset = release.assets.find(a => a.name.endsWith('.xpi'));
+        if (xpiAsset) {
+          document.getElementById('content').innerHTML = `
+            <p>Click the button below to install version ${release.tag_name}:</p>
+            <a href="${xpiAsset.browser_download_url}" class="install-btn">Install Addon</a>
+          `;
+        } else {
+          document.getElementById('content').innerHTML = `
+            <p>No XPI file found. <a href="${release.html_url}">View releases</a></p>
+          `;
+        }
+      })
+      .catch(err => {
+        document.getElementById('content').innerHTML = `
+          <p>Error loading release. <a href="https://github.com/KMRH47/firefox-addon-open-specific-tab/releases">View releases manually</a></p>
+        `;
+      });
+  </script>
+</body>
+</html>
