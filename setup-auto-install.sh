@@ -1,6 +1,6 @@
 #!/bin/bash
 # Setup Firefox Enterprise Policies for auto-installing Tab Reuse addon
-# Run this once per Firefox installation
+# Run this once per machine - the addon will auto-install on every Firefox profile
 
 set -e
 
@@ -9,43 +9,44 @@ if [[ "$OSTYPE" == "darwin"* ]]; then
     FIREFOX_DIR="$HOME/Library/Application Support/Firefox"
 elif [[ "$OSTYPE" == "linux-gnu"* ]]; then
     FIREFOX_DIR="$HOME/.mozilla/firefox"
+elif [[ "$OSTYPE" == "msys" || "$OSTYPE" == "win32" ]]; then
+    FIREFOX_DIR="$APPDATA/Mozilla/Firefox"
 else
-    echo "Unsupported OS"
+    echo "Unsupported OS: $OSTYPE"
     exit 1
 fi
 
-# Create directories
+# Get latest release XPI URL
+echo "Fetching latest release URL..."
+LATEST_RELEASE=$(curl -s https://api.github.com/repos/KMRH47/firefox-addon-open-specific-tab/releases/latest)
+XPI_URL=$(echo "$LATEST_RELEASE" | grep -o '"browser_download_url": "[^"]*\.xpi"' | head -1 | cut -d'"' -f4)
+
+if [ -z "$XPI_URL" ]; then
+    echo "Error: Could not find XPI download URL"
+    exit 1
+fi
+
+echo "Found XPI: $XPI_URL"
+
+# Create distribution directory (works for all profiles)
 mkdir -p "$FIREFOX_DIR/distribution"
-mkdir -p "$FIREFOX_DIR/defaults/pref"
 
 # Create policies.json for auto-installation
-cat > "$FIREFOX_DIR/distribution/policies.json" << 'POLICIES_EOF'
+cat > "$FIREFOX_DIR/distribution/policies.json" << POLICIES_EOF
 {
   "policies": {
     "Extensions": {
       "Install": [
-        "https://github.com/KMRH47/firefox-addon-open-specific-tab/releases/latest/download/tab-reuse-*.xpi"
+        "$XPI_URL"
       ]
     }
   }
 }
 POLICIES_EOF
 
-# Create autoconfig.js
-cat > "$FIREFOX_DIR/defaults/pref/autoconfig.js" << 'AUTOCONFIG_EOF'
-pref("general.config.filename", "mozilla.cfg");
-pref("general.config.obscure_value", 0);
-AUTOCONFIG_EOF
-
-# Create mozilla.cfg
-cat > "$FIREFOX_DIR/mozilla.cfg" << 'MOZILLA_CFG_EOF'
-// Auto-install Tab Reuse addon
-lockPref("xpinstall.signatures.required", false);
-defaultPref("extensions.autoDisableScopes", 0);
-defaultPref("extensions.enabledScopes", 15);
-MOZILLA_CFG_EOF
-
-echo "? Firefox Enterprise Policies configured"
-echo "? Addon will auto-install on next Firefox start"
 echo ""
-echo "Note: You may need to restart Firefox for changes to take effect."
+echo "? Firefox Enterprise Policies configured"
+echo "? Addon will auto-install for all Firefox profiles on this machine"
+echo "? Works with Firefox Sync - new profiles will get the addon automatically"
+echo ""
+echo "Restart Firefox to install the addon."
