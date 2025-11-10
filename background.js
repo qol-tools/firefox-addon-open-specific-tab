@@ -59,8 +59,44 @@ function isRootUrl(url) {
     const urlObj = new URL(url);
     const pathname = urlObj.pathname;
     const search = urlObj.search;
-    // Root URL if pathname is empty or just "/", and no search params
     return (pathname === '' || pathname === '/') && search === '';
+  } catch (e) {
+    return false;
+  }
+}
+
+function isPathPrefix(shortcutUrl, tabUrl) {
+  try {
+    const shortcutObj = new URL(shortcutUrl);
+    const tabObj = new URL(tabUrl);
+
+    if (shortcutObj.hostname.toLowerCase() !== tabObj.hostname.toLowerCase()) {
+      return false;
+    }
+
+    if (shortcutObj.search) {
+      return false;
+    }
+
+    let shortcutPath = shortcutObj.pathname;
+    let tabPath = tabObj.pathname;
+
+    if (shortcutPath.length > 1 && shortcutPath.endsWith('/')) {
+      shortcutPath = shortcutPath.slice(0, -1);
+    }
+    if (tabPath.length > 1 && tabPath.endsWith('/')) {
+      tabPath = tabPath.slice(0, -1);
+    }
+
+    if (!tabPath.startsWith(shortcutPath)) {
+      return false;
+    }
+
+    if (tabPath.length === shortcutPath.length) {
+      return false;
+    }
+
+    return tabPath.charAt(shortcutPath.length) === '/';
   } catch (e) {
     return false;
   }
@@ -88,8 +124,19 @@ async function handleTabReuse(tabId, url) {
     setTimeout(() => handledTabs.delete(tabId), 5000);
     return;
   }
-  
-  // If the URL is just the root domain, match any tab on that domain
+
+  const prefixMatch = existingTabs.find(t => {
+    if (!t.url) return false;
+    return isPathPrefix(cleanUrl, t.url);
+  });
+  if (prefixMatch) {
+    await browser.tabs.update(prefixMatch.id, { active: true });
+    await browser.windows.update(prefixMatch.windowId, { focused: true });
+    await browser.tabs.remove(tabId);
+    setTimeout(() => handledTabs.delete(tabId), 5000);
+    return;
+  }
+
   if (isRootUrl(cleanUrl)) {
     const domain = getDomain(cleanUrl);
     if (domain) {
