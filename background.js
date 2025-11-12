@@ -1,10 +1,18 @@
 // Track tabs we've already handled to avoid duplicates
 const handledTabs = new Set();
 
+function normalizeHostname(hostname) {
+  const normalized = hostname.toLowerCase();
+  if (normalized.startsWith('www.')) {
+    return normalized.slice(4);
+  }
+  return normalized;
+}
+
 function getDomain(url) {
   try {
     const urlObj = new URL(url);
-    return urlObj.hostname.toLowerCase();
+    return normalizeHostname(urlObj.hostname);
   } catch (e) {
     return null;
   }
@@ -46,8 +54,8 @@ function normalizeUrlForComparison(url) {
     if (pathname.length > 1 && pathname.endsWith('/')) {
       pathname = pathname.slice(0, -1);
     }
-    // Reconstruct URL with normalized pathname
-    const normalized = `${urlObj.protocol}//${urlObj.hostname.toLowerCase()}${pathname}${urlObj.search}`;
+    // Reconstruct URL with normalized hostname and pathname
+    const normalized = `${urlObj.protocol}//${normalizeHostname(urlObj.hostname)}${pathname}${urlObj.search}`;
     return normalized;
   } catch (e) {
     return url;
@@ -70,7 +78,7 @@ function isPathPrefix(shortcutUrl, tabUrl) {
     const shortcutObj = new URL(shortcutUrl);
     const tabObj = new URL(tabUrl);
 
-    if (shortcutObj.hostname.toLowerCase() !== tabObj.hostname.toLowerCase()) {
+    if (normalizeHostname(shortcutObj.hostname) !== normalizeHostname(tabObj.hostname)) {
       return false;
     }
 
