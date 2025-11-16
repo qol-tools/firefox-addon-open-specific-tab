@@ -1,27 +1,32 @@
 # Tab Reuse
 
-Firefox extension that reuses existing tabs when URLs are opened with `__reuse_tab=1` parameter.
+Firefox extension that reuses existing tabs when opening URLs with the `__reuse_tab=1` parameter.
 
-## Usage
+## Why?
 
-```bash
-open -a "Firefox" "https://example.com/page?__reuse_tab=1"
-```
-
-- Exact URL match: reuses the matching tab
-- Root domain (e.g., `youtube.com/?__reuse_tab=1`): reuses any tab on that domain
-- No match: opens the URL normally
+Prevent duplicate tabs when opening links from external applications or scripts. Instead of creating a new tab every time, this extension intelligently reuses existing tabs.
 
 ## Installation
 
-### First Time Setup
+1. Download the latest release from the [Releases page](https://github.com/qol-tools/firefox-addon-open-specific-tab/releases)
+2. Open the `.xpi` file in Firefox
+3. Confirm the installation
 
-1. Get Mozilla API credentials: https://addons.mozilla.org/developers/addon/api/key/
-2. Add secrets `MOZILLA_API_KEY` and `MOZILLA_API_SECRET` to GitHub repo settings
-3. Push a tag: `git tag v1.0.0 && git push origin v1.0.0`
-4. Download the signed `.xpi` from the Releases page
-5. Open the `.xpi` file in Firefox to install
+The extension persists across browser restarts and is signed by Mozilla.
 
-The addon persists across restarts and is signed by Mozilla.
+## Usage
 
-**Note:** Firefox Sync doesn't sync unlisted addons. You'll need to manually install on new machines.
+Add `__reuse_tab=1` to any URL when opening from external applications:
+
+```bash
+firefox "https://example.com/page?__reuse_tab=1"
+```
+
+**Behavior:**
+- Exact URL match → switches to the existing tab
+- Root domain (e.g., `youtube.com/?__reuse_tab=1`) → switches to any tab on that domain
+- No match → opens URL normally in a new tab
+
+## License
+
+MIT

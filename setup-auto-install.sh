@@ -18,7 +18,7 @@ fi
 
 # Get latest release XPI URL
 echo "Fetching latest release URL..."
-LATEST_RELEASE=$(curl -s https://api.github.com/repos/KMRH47/firefox-addon-open-specific-tab/releases/latest)
+LATEST_RELEASE=$(curl -s https://api.github.com/repos/qol-tools/firefox-addon-open-specific-tab/releases/latest)
 XPI_URL=$(echo "$LATEST_RELEASE" | grep -o '"browser_download_url": "[^"]*\.xpi"' | head -1 | cut -d'"' -f4)
 
 if [ -z "$XPI_URL" ]; then

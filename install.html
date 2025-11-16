@@ -38,7 +38,7 @@
   
   <script>
     // Fetch latest release and find XPI file
-    fetch('https://api.github.com/repos/KMRH47/firefox-addon-open-specific-tab/releases/latest')
+    fetch('https://api.github.com/repos/qol-tools/firefox-addon-open-specific-tab/releases/latest')
       .then(r => r.json())
       .then(release => {
         const xpiAsset = release.assets.find(a => a.name.endsWith('.xpi'));
@@ -55,7 +55,7 @@
       })
       .catch(err => {
         document.getElementById('content').innerHTML = `
-          <p>Error loading release. <a href="https://github.com/KMRH47/firefox-addon-open-specific-tab/releases">View releases manually</a></p>
+          <p>Error loading release. <a href="https://github.com/qol-tools/firefox-addon-open-specific-tab/releases">View releases manually</a></p>
         `;
       });
   </script>
