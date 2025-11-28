@@ -46,6 +46,25 @@ function removeReuseFlag(url) {
   }
 }
 
+function getRunJSCode(url) {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.searchParams.get('__run_js');
+  } catch (e) {
+    return null;
+  }
+}
+
+function removeRunJSFlag(url) {
+  try {
+    const urlObj = new URL(url);
+    urlObj.searchParams.delete('__run_js');
+    return urlObj.toString();
+  } catch (e) {
+    return url;
+  }
+}
+
 function normalizeUrlForComparison(url) {
   try {
     const urlObj = new URL(url);
@@ -110,24 +129,54 @@ function isPathPrefix(shortcutUrl, tabUrl) {
   }
 }
 
+async function copyCookies(tabId) {
+  try {
+    const result = await browser.scripting.executeScript({
+      target: { tabId },
+      func: () => {
+        const cookies = document.cookie;
+        const textarea = document.createElement('textarea');
+        textarea.value = cookies;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        return cookies;
+      }
+    });
+    return result[0].result;
+  } catch (error) {
+    console.error('[Tab Reuse] Error copying cookies:', error);
+    return null;
+  }
+}
+
 async function handleTabReuse(tabId, url) {
   if (handledTabs.has(tabId)) return;
   handledTabs.add(tabId);
-  
-  const cleanUrl = removeReuseFlag(url);
+
+  const jsCode = getRunJSCode(url);
+  let cleanUrl = removeReuseFlag(url);
+  cleanUrl = removeRunJSFlag(cleanUrl);
   const normalizedCleanUrl = normalizeUrlForComparison(cleanUrl);
   const allTabs = await browser.tabs.query({});
   const existingTabs = allTabs.filter(t => t.id !== tabId);
-  
+
   // Check for exact URL match first
   const exactMatch = existingTabs.find(t => {
     if (!t.url) return false;
     const normalizedTabUrl = normalizeUrlForComparison(t.url);
     return normalizedTabUrl === normalizedCleanUrl;
   });
+
   if (exactMatch) {
     await browser.tabs.update(exactMatch.id, { active: true });
     await browser.windows.update(exactMatch.windowId, { focused: true });
+    if (jsCode === 'copy_cookies') {
+      await copyCookies(exactMatch.id);
+    }
     await browser.tabs.remove(tabId);
     setTimeout(() => handledTabs.delete(tabId), 5000);
     return;
@@ -140,6 +189,9 @@ async function handleTabReuse(tabId, url) {
   if (prefixMatch) {
     await browser.tabs.update(prefixMatch.id, { active: true });
     await browser.windows.update(prefixMatch.windowId, { focused: true });
+    if (jsCode === 'copy_cookies') {
+      await copyCookies(prefixMatch.id);
+    }
     await browser.tabs.remove(tabId);
     setTimeout(() => handledTabs.delete(tabId), 5000);
     return;
@@ -155,15 +207,27 @@ async function handleTabReuse(tabId, url) {
       if (domainMatch) {
         await browser.tabs.update(domainMatch.id, { active: true });
         await browser.windows.update(domainMatch.windowId, { focused: true });
+        if (jsCode === 'copy_cookies') {
+          await copyCookies(domainMatch.id);
+        }
         await browser.tabs.remove(tabId);
         setTimeout(() => handledTabs.delete(tabId), 5000);
         return;
       }
     }
   }
-  
-  // No match found, navigate to clean URL (remove the flag)
+
+  // No match found, navigate to clean URL (remove the flags)
   await browser.tabs.update(tabId, { url: cleanUrl });
+  if (jsCode === 'copy_cookies') {
+    // Wait for page to load before copying cookies
+    browser.tabs.onUpdated.addListener(function listener(updatedTabId, changeInfo) {
+      if (updatedTabId === tabId && changeInfo.status === 'complete') {
+        copyCookies(tabId);
+        browser.tabs.onUpdated.removeListener(listener);
+      }
+    });
+  }
   setTimeout(() => handledTabs.delete(tabId), 5000);
 }
 
@@ -185,10 +249,6 @@ browser.tabs.onCreated.addListener(async (tab) => {
 // Fallback: handle tabs that get URL set after creation
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.url && tab.url && getDomain(tab.url) && hasReuseFlag(tab.url)) {
-    // Only act on recent tabs (created within last 2 seconds) to avoid interfering with normal navigation
-    const tabInfo = await browser.tabs.get(tabId);
-    // Use a simple check: if URL just changed and has flag, handle it
-    // The handledTabs set prevents duplicates
     await handleTabReuse(tabId, tab.url);
   }
 });

@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "Tab Reuse Installer",
+  "version": "1.0.0",
+  "description": "Auto-installs Tab Reuse addon (syncs via Firefox Sync)",
+  "permissions": ["management"],
+  "browser_specific_settings": {
+    "gecko": {
+      "id": "tab-reuse-installer@kmrh47.github.io"
+    }
+  },
+  "background": {
+    "scripts": ["installer-background.js"]
+  }
+}
