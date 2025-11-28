@@ -2,4 +2,7 @@ build.sh
 .github/
 README.md
 .gitignore
-
+installer-background.js
+installer-manifest.json
+install.html
+setup-auto-install.sh
