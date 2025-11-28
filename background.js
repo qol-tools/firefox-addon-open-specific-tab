@@ -175,6 +175,7 @@ async function handleTabReuse(tabId, url) {
     await browser.tabs.update(exactMatch.id, { active: true });
     await browser.windows.update(exactMatch.windowId, { focused: true });
     if (jsCode === 'copy_cookies') {
+      await new Promise(resolve => setTimeout(resolve, 100));
       await copyCookies(exactMatch.id);
     }
     await browser.tabs.remove(tabId);
@@ -190,6 +191,7 @@ async function handleTabReuse(tabId, url) {
     await browser.tabs.update(prefixMatch.id, { active: true });
     await browser.windows.update(prefixMatch.windowId, { focused: true });
     if (jsCode === 'copy_cookies') {
+      await new Promise(resolve => setTimeout(resolve, 100));
       await copyCookies(prefixMatch.id);
     }
     await browser.tabs.remove(tabId);
@@ -208,6 +210,7 @@ async function handleTabReuse(tabId, url) {
         await browser.tabs.update(domainMatch.id, { active: true });
         await browser.windows.update(domainMatch.windowId, { focused: true });
         if (jsCode === 'copy_cookies') {
+          await new Promise(resolve => setTimeout(resolve, 100));
           await copyCookies(domainMatch.id);
         }
         await browser.tabs.remove(tabId);
