@@ -133,16 +133,9 @@ async function copyCookies(tabId) {
   try {
     const result = await browser.scripting.executeScript({
       target: { tabId },
-      func: () => {
+      func: async () => {
         const cookies = document.cookie;
-        const textarea = document.createElement('textarea');
-        textarea.value = cookies;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.select();
-        document.execCommand('copy');
-        document.body.removeChild(textarea);
+        await navigator.clipboard.writeText(cookies);
         return cookies;
       }
     });
