@@ -55,6 +55,16 @@ function getRunJSCode(url) {
   }
 }
 
+function parseRunJSCommand(jsCode) {
+  if (!jsCode) return { command: null, value: null };
+
+  const parts = jsCode.split('=');
+  if (parts.length === 1) {
+    return { command: parts[0], value: null };
+  }
+  return { command: parts[0], value: parts.slice(1).join('=') };
+}
+
 function removeRunJSFlag(url) {
   try {
     const urlObj = new URL(url);
@@ -153,16 +163,107 @@ async function copyCookies(tabId) {
   }
 }
 
+async function deleteCookie(tabId, cookieName) {
+  try {
+    const result = await browser.scripting.executeScript({
+      target: { tabId },
+      func: (name) => {
+        let deleted = false;
+
+        // Try localStorage
+        if (localStorage.getItem(name) !== null) {
+          localStorage.removeItem(name);
+          deleted = true;
+        }
+
+        // Try sessionStorage
+        if (sessionStorage.getItem(name) !== null) {
+          sessionStorage.removeItem(name);
+          deleted = true;
+        }
+
+        return deleted;
+      },
+      args: [cookieName]
+    });
+
+    if (result[0].result) {
+      console.log(`[Tab Reuse] Deleted storage item: ${cookieName}`);
+    } else {
+      console.log(`[Tab Reuse] Storage item not found: ${cookieName}`);
+    }
+  } catch (error) {
+    console.error('[Tab Reuse] Error deleting storage item:', error);
+  }
+}
+
+async function deleteCookiesByPrefix(tabId, prefix) {
+  try {
+    const result = await browser.scripting.executeScript({
+      target: { tabId },
+      func: (prefix) => {
+        const localStorageKeys = Object.keys(localStorage);
+        const sessionStorageKeys = Object.keys(sessionStorage);
+
+        // Delete from localStorage
+        const localKeysToDelete = localStorageKeys.filter(k => k.startsWith(prefix));
+        for (const key of localKeysToDelete) {
+          localStorage.removeItem(key);
+        }
+
+        // Delete from sessionStorage
+        const sessionKeysToDelete = sessionStorageKeys.filter(k => k.startsWith(prefix));
+        for (const key of sessionKeysToDelete) {
+          sessionStorage.removeItem(key);
+        }
+
+        return {
+          deletedLocal: localKeysToDelete,
+          deletedSession: sessionKeysToDelete
+        };
+      },
+      args: [prefix]
+    });
+
+    const data = result[0].result;
+    const totalDeleted = data.deletedLocal.length + data.deletedSession.length;
+    console.log(`[Tab Reuse] Deleted ${totalDeleted} storage items with prefix '${prefix}'`);
+    if (data.deletedLocal.length > 0) {
+      console.log(`[Tab Reuse] localStorage:`, data.deletedLocal);
+    }
+    if (data.deletedSession.length > 0) {
+      console.log(`[Tab Reuse] sessionStorage:`, data.deletedSession);
+    }
+  } catch (error) {
+    console.error('[Tab Reuse] Error deleting storage items by prefix:', error);
+  }
+}
+
 async function handleTabReuse(tabId, url) {
   if (handledTabs.has(tabId)) return;
   handledTabs.add(tabId);
 
   const jsCode = getRunJSCode(url);
+  const { command, value } = parseRunJSCommand(jsCode);
   let cleanUrl = removeReuseFlag(url);
   cleanUrl = removeRunJSFlag(cleanUrl);
   const normalizedCleanUrl = normalizeUrlForComparison(cleanUrl);
   const allTabs = await browser.tabs.query({});
   const existingTabs = allTabs.filter(t => t.id !== tabId);
+
+  // Helper to execute JS command on a tab
+  const executeCommand = async (targetTabId) => {
+    if (!command) return;
+
+    if (command === 'copy_cookies') {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      await copyCookies(targetTabId);
+    } else if (command === 'delete_cookie' && value) {
+      await deleteCookie(targetTabId, value);
+    } else if (command === 'delete_cookies' && value) {
+      await deleteCookiesByPrefix(targetTabId, value);
+    }
+  };
 
   // Check for exact URL match first
   const exactMatch = existingTabs.find(t => {
@@ -174,10 +275,7 @@ async function handleTabReuse(tabId, url) {
   if (exactMatch) {
     await browser.tabs.update(exactMatch.id, { active: true });
     await browser.windows.update(exactMatch.windowId, { focused: true });
-    if (jsCode === 'copy_cookies') {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      await copyCookies(exactMatch.id);
-    }
+    await executeCommand(exactMatch.id);
     await browser.tabs.remove(tabId);
     setTimeout(() => handledTabs.delete(tabId), 5000);
     return;
@@ -190,10 +288,7 @@ async function handleTabReuse(tabId, url) {
   if (prefixMatch) {
     await browser.tabs.update(prefixMatch.id, { active: true });
     await browser.windows.update(prefixMatch.windowId, { focused: true });
-    if (jsCode === 'copy_cookies') {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      await copyCookies(prefixMatch.id);
-    }
+    await executeCommand(prefixMatch.id);
     await browser.tabs.remove(tabId);
     setTimeout(() => handledTabs.delete(tabId), 5000);
     return;
@@ -209,10 +304,7 @@ async function handleTabReuse(tabId, url) {
       if (domainMatch) {
         await browser.tabs.update(domainMatch.id, { active: true });
         await browser.windows.update(domainMatch.windowId, { focused: true });
-        if (jsCode === 'copy_cookies') {
-          await new Promise(resolve => setTimeout(resolve, 100));
-          await copyCookies(domainMatch.id);
-        }
+        await executeCommand(domainMatch.id);
         await browser.tabs.remove(tabId);
         setTimeout(() => handledTabs.delete(tabId), 5000);
         return;
@@ -222,11 +314,11 @@ async function handleTabReuse(tabId, url) {
 
   // No match found, navigate to clean URL (remove the flags)
   await browser.tabs.update(tabId, { url: cleanUrl });
-  if (jsCode === 'copy_cookies') {
-    // Wait for page to load before copying cookies
+  if (command) {
+    // Wait for page to load before executing command
     browser.tabs.onUpdated.addListener(function listener(updatedTabId, changeInfo) {
       if (updatedTabId === tabId && changeInfo.status === 'complete') {
-        copyCookies(tabId);
+        executeCommand(tabId);
         browser.tabs.onUpdated.removeListener(listener);
       }
     });
