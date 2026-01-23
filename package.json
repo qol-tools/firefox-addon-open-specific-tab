@@ -1,0 +1,20 @@
+{
+  "name": "firefox-addon-open-specific-tab",
+  "version": "1.0.0",
+  "description": "Firefox extension that reuses existing tabs when opening URLs with the `__reuse_tab=1` parameter.",
+  "main": "background.js",
+  "scripts": {
+    "test": "node background.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git@github-priv:KMRH47/firefox-addon-open-specific-tab.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "devDependencies": {
+    "fast-check": "^4.5.3"
+  }
+}

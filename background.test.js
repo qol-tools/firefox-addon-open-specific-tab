@@ -1,0 +1,481 @@
+import assert from 'assert';
+import fc from 'fast-check';
+import {
+  normalizeHostname,
+  getDomain,
+  hasReuseFlag,
+  removeReuseFlag,
+  getRunJSCode,
+  parseRunJSCommand,
+  removeRunJSFlag,
+  normalizeUrlForComparison,
+  isRootUrl,
+  isPathPrefix,
+} from './url-utils.js';
+
+const charGen = (chars) => fc.integer({ min: 0, max: chars.length - 1 }).map(i => chars[i]);
+const stringGen = (chars, minLen = 1, maxLen = 20) =>
+  fc.array(charGen(chars), { minLength: minLen, maxLength: maxLen }).map(arr => arr.join(''));
+
+const ALPHA = 'abcdefghijklmnopqrstuvwxyz';
+const ALPHANUM = ALPHA + '0123456789';
+const SPECIAL = ':;/?@&=+$,{}[]()<>#%"\'^~`|!* \t';
+
+const tests = {
+  'normalizeUrlForComparison: handles special characters in query params': () => {
+    const withFlag = 'https://brunata.youtrack.cloud/agiles/141-18/current?query=has:%20-%7BSubtask%20of%7D%20or%20Subtask%20of:%20(type:%20Epic)&__reuse_tab=1';
+    const withoutFlag = 'https://brunata.youtrack.cloud/agiles/141-18/current?query=has%3A%20-%7BSubtask%20of%7D%20or%20Subtask%20of%3A%20(type%3A%20Epic)';
+    assert.strictEqual(normalizeUrlForComparison(withFlag), normalizeUrlForComparison(withoutFlag));
+  },
+
+  'normalizeUrlForComparison: different encodings of same content match': () => {
+    const encoded1 = 'https://example.com?q=hello%20world';
+    const encoded2 = 'https://example.com?q=hello+world';
+    assert.strictEqual(normalizeUrlForComparison(encoded1), normalizeUrlForComparison(encoded2));
+  },
+
+  'normalizeUrlForComparison: removes __reuse_tab param': () => {
+    const url = 'https://example.com/path?foo=bar&__reuse_tab=1';
+    const normalized = normalizeUrlForComparison(url);
+    assert.ok(!normalized.includes('__reuse_tab'));
+    assert.ok(normalized.includes('foo=bar'));
+  },
+
+  'normalizeUrlForComparison: removes __run_js param': () => {
+    const url = 'https://example.com?__run_js=delete_cookies=test&other=value';
+    const normalized = normalizeUrlForComparison(url);
+    assert.ok(!normalized.includes('__run_js'));
+    assert.ok(normalized.includes('other=value'));
+  },
+
+  'normalizeUrlForComparison: sorts query params for consistent comparison': () => {
+    const url1 = 'https://example.com?b=2&a=1';
+    const url2 = 'https://example.com?a=1&b=2';
+    assert.strictEqual(normalizeUrlForComparison(url1), normalizeUrlForComparison(url2));
+  },
+
+  'normalizeUrlForComparison: removes trailing slash': () => {
+    const withSlash = 'https://example.com/path/';
+    const withoutSlash = 'https://example.com/path';
+    assert.strictEqual(normalizeUrlForComparison(withSlash), normalizeUrlForComparison(withoutSlash));
+  },
+
+  'normalizeUrlForComparison: removes multiple trailing slashes': () => {
+    const withSlashes = 'https://example.com/path///';
+    const withoutSlash = 'https://example.com/path';
+    assert.strictEqual(normalizeUrlForComparison(withSlashes), normalizeUrlForComparison(withoutSlash));
+  },
+
+  'normalizeUrlForComparison: normalizes www prefix': () => {
+    const withWww = 'https://www.example.com/path';
+    const withoutWww = 'https://example.com/path';
+    assert.strictEqual(normalizeUrlForComparison(withWww), normalizeUrlForComparison(withoutWww));
+  },
+
+  'normalizeUrlForComparison: handles colons in query values': () => {
+    const url1 = 'https://example.com?filter=type:epic';
+    const url2 = 'https://example.com?filter=type%3Aepic';
+    assert.strictEqual(normalizeUrlForComparison(url1), normalizeUrlForComparison(url2));
+  },
+
+  'normalizeUrlForComparison: handles parentheses in query values': () => {
+    const url1 = 'https://example.com?q=(test)';
+    const url2 = 'https://example.com?q=%28test%29';
+    assert.strictEqual(normalizeUrlForComparison(url1), normalizeUrlForComparison(url2));
+  },
+
+  'normalizeUrlForComparison: handles curly braces in query values': () => {
+    const url1 = 'https://example.com?q={test}';
+    const url2 = 'https://example.com?q=%7Btest%7D';
+    assert.strictEqual(normalizeUrlForComparison(url1), normalizeUrlForComparison(url2));
+  },
+
+  'hasReuseFlag: returns true when flag present': () => {
+    assert.strictEqual(hasReuseFlag('https://example.com?__reuse_tab=1'), true);
+    assert.strictEqual(hasReuseFlag('https://example.com?foo=bar&__reuse_tab=1'), true);
+  },
+
+  'hasReuseFlag: returns false when flag absent': () => {
+    assert.strictEqual(hasReuseFlag('https://example.com'), false);
+    assert.strictEqual(hasReuseFlag('https://example.com?foo=bar'), false);
+  },
+
+  'hasReuseFlag: works with complex query strings': () => {
+    const url = 'https://brunata.youtrack.cloud/agiles/141-18/current?query=has:%20-%7BSubtask%20of%7D&__reuse_tab=1';
+    assert.strictEqual(hasReuseFlag(url), true);
+  },
+
+  'parseRunJSCommand: parses command without value': () => {
+    const result = parseRunJSCommand('copy_cookies');
+    assert.deepStrictEqual(result, { command: 'copy_cookies', value: null });
+  },
+
+  'parseRunJSCommand: parses command with value': () => {
+    const result = parseRunJSCommand('delete_cookie=mykey');
+    assert.deepStrictEqual(result, { command: 'delete_cookie', value: 'mykey' });
+  },
+
+  'parseRunJSCommand: handles value with equals sign': () => {
+    const result = parseRunJSCommand('delete_cookies=prefix=test');
+    assert.deepStrictEqual(result, { command: 'delete_cookies', value: 'prefix=test' });
+  },
+
+  'parseRunJSCommand: returns nulls for empty input': () => {
+    assert.deepStrictEqual(parseRunJSCommand(null), { command: null, value: null });
+    assert.deepStrictEqual(parseRunJSCommand(''), { command: null, value: null });
+  },
+
+  'getRunJSCode: extracts __run_js value': () => {
+    const url = 'https://example.com?__run_js=delete_cookies=weblang&__reuse_tab=1';
+    assert.strictEqual(getRunJSCode(url), 'delete_cookies=weblang');
+  },
+
+  'getRunJSCode: returns null when not present': () => {
+    assert.strictEqual(getRunJSCode('https://example.com?foo=bar'), null);
+  },
+
+  'getDomain: extracts and normalizes domain': () => {
+    assert.strictEqual(getDomain('https://www.example.com/path'), 'example.com');
+    assert.strictEqual(getDomain('https://Example.COM/path'), 'example.com');
+  },
+
+  'isRootUrl: detects root URLs': () => {
+    assert.strictEqual(isRootUrl('https://example.com'), true);
+    assert.strictEqual(isRootUrl('https://example.com/'), true);
+    assert.strictEqual(isRootUrl('https://example.com/path'), false);
+    assert.strictEqual(isRootUrl('https://example.com?query=1'), false);
+  },
+
+  'isPathPrefix: detects path prefixes': () => {
+    assert.strictEqual(isPathPrefix('https://example.com/app', 'https://example.com/app/page'), true);
+    assert.strictEqual(isPathPrefix('https://example.com/app', 'https://example.com/app'), false);
+    assert.strictEqual(isPathPrefix('https://example.com/app', 'https://example.com/application'), false);
+  },
+
+  'removeReuseFlag: removes flag from URL': () => {
+    const result = removeReuseFlag('https://example.com?foo=bar&__reuse_tab=1');
+    assert.ok(!result.includes('__reuse_tab'));
+    assert.ok(result.includes('foo=bar'));
+  },
+
+  'removeRunJSFlag: removes flag from URL': () => {
+    const result = removeRunJSFlag('https://example.com?foo=bar&__run_js=test');
+    assert.ok(!result.includes('__run_js'));
+    assert.ok(result.includes('foo=bar'));
+  },
+
+  'full flow: youtrack URL with special chars matches existing tab': () => {
+    const shortcutUrl = 'https://brunata.youtrack.cloud/agiles/141-18/current?query=has:%20-%7BSubtask%20of%7D%20or%20Subtask%20of:%20(type:%20Epic)&__reuse_tab=1';
+    const existingTabUrl = 'https://brunata.youtrack.cloud/agiles/141-18/current?query=has%3A%20-%7BSubtask%20of%7D%20or%20Subtask%20of%3A%20(type%3A%20Epic)';
+    assert.strictEqual(normalizeUrlForComparison(shortcutUrl), normalizeUrlForComparison(existingTabUrl));
+  },
+
+  'full flow: github PRs URL works': () => {
+    const url = 'https://github.com/pulls?q=user%3Ateam-webbill+sort%3Aupdated-desc&__reuse_tab=1';
+    assert.strictEqual(hasReuseFlag(url), true);
+    const normalized = normalizeUrlForComparison(url);
+    assert.ok(!normalized.includes('__reuse_tab'));
+    assert.ok(normalized.includes('github.com/pulls'));
+  },
+};
+
+const propertyTests = {
+  'property: same query value with different encodings normalizes identically': () => {
+    fc.assert(
+      fc.property(
+        stringGen(ALPHANUM + SPECIAL, 1, 50),
+        fc.constantFrom('query', 'filter', 'search', 'q', 'param'),
+        (value, paramName) => {
+          const encoded1 = `https://example.com?${paramName}=${encodeURIComponent(value)}`;
+          const encoded2 = `https://example.com?${paramName}=${value.split('').map(c => {
+            if (/[a-zA-Z0-9]/.test(c)) return c;
+            return '%' + c.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0');
+          }).join('')}`;
+
+          try {
+            new URL(encoded1);
+            new URL(encoded2);
+          } catch {
+            return true;
+          }
+
+          return normalizeUrlForComparison(encoded1) === normalizeUrlForComparison(encoded2);
+        }
+      ),
+      { numRuns: 1000 }
+    );
+  },
+
+  'property: adding __reuse_tab does not affect normalized URL': () => {
+    fc.assert(
+      fc.property(
+        fc.webUrl({ withQueryParameters: true }),
+        (url) => {
+          try {
+            const urlObj = new URL(url);
+            if (urlObj.searchParams.has('__reuse_tab')) return true;
+
+            const withFlag = url + (url.includes('?') ? '&' : '?') + '__reuse_tab=1';
+            return normalizeUrlForComparison(url) === normalizeUrlForComparison(withFlag);
+          } catch {
+            return true;
+          }
+        }
+      ),
+      { numRuns: 1000 }
+    );
+  },
+
+  'property: adding __run_js does not affect normalized URL': () => {
+    fc.assert(
+      fc.property(
+        fc.webUrl({ withQueryParameters: true }),
+        stringGen(ALPHA + '_', 1, 20),
+        (url, command) => {
+          try {
+            const urlObj = new URL(url);
+            if (urlObj.searchParams.has('__run_js')) return true;
+
+            const withFlag = url + (url.includes('?') ? '&' : '?') + '__run_js=' + command;
+            return normalizeUrlForComparison(url) === normalizeUrlForComparison(withFlag);
+          } catch {
+            return true;
+          }
+        }
+      ),
+      { numRuns: 1000 }
+    );
+  },
+
+  'property: query param order does not affect normalized URL (unique keys)': () => {
+    fc.assert(
+      fc.property(
+        fc.array(
+          fc.tuple(stringGen(ALPHA, 1, 10), stringGen(ALPHANUM, 1, 20)),
+          { minLength: 2, maxLength: 5 }
+        ),
+        (params) => {
+          const uniqueParams = [...new Map(params).entries()];
+          if (uniqueParams.length < 2) return true;
+
+          const url1 = 'https://example.com?' + uniqueParams.map(([k, v]) => `${k}=${v}`).join('&');
+          const shuffled = [...uniqueParams].sort(() => Math.random() - 0.5);
+          const url2 = 'https://example.com?' + shuffled.map(([k, v]) => `${k}=${v}`).join('&');
+
+          return normalizeUrlForComparison(url1) === normalizeUrlForComparison(url2);
+        }
+      ),
+      { numRuns: 1000 }
+    );
+  },
+
+  'property: normalization is idempotent': () => {
+    fc.assert(
+      fc.property(
+        fc.webUrl({ withQueryParameters: true }),
+        (url) => {
+          try {
+            const once = normalizeUrlForComparison(url);
+            const twice = normalizeUrlForComparison(once);
+            return once === twice;
+          } catch {
+            return true;
+          }
+        }
+      ),
+      { numRuns: 1000 }
+    );
+  },
+
+  'property: %20 and + are equivalent for spaces': () => {
+    fc.assert(
+      fc.property(
+        stringGen(ALPHA + ' ', 1, 30),
+        (value) => {
+          const withPercent = `https://example.com?q=${value.replace(/ /g, '%20')}`;
+          const withPlus = `https://example.com?q=${value.replace(/ /g, '+')}`;
+          return normalizeUrlForComparison(withPercent) === normalizeUrlForComparison(withPlus);
+        }
+      ),
+      { numRuns: 500 }
+    );
+  },
+
+  'property: hasReuseFlag detects flag regardless of position': () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.tuple(stringGen(ALPHA, 1, 10), stringGen(ALPHANUM, 1, 10)), { minLength: 0, maxLength: 4 }),
+        fc.integer({ min: 0, max: 4 }),
+        (params, insertPos) => {
+          const allParams = [...params];
+          const pos = Math.min(insertPos, allParams.length);
+          allParams.splice(pos, 0, ['__reuse_tab', '1']);
+          const url = 'https://example.com?' + allParams.map(([k, v]) => `${k}=${v}`).join('&');
+          return hasReuseFlag(url) === true;
+        }
+      ),
+      { numRuns: 500 }
+    );
+  },
+
+  'property: parseRunJSCommand preserves value with multiple equals signs': () => {
+    fc.assert(
+      fc.property(
+        stringGen(ALPHA + '_', 1, 15),
+        stringGen(ALPHANUM + '=', 1, 30),
+        (command, value) => {
+          const input = `${command}=${value}`;
+          const result = parseRunJSCommand(input);
+          return result.command === command && result.value === value;
+        }
+      ),
+      { numRuns: 500 }
+    );
+  },
+
+  'property: real-world URL patterns normalize consistently': () => {
+    const patterns = [
+      (s) => `https://youtrack.example.com/agiles/1/current?query=has:%20-{${s}}`,
+      (s) => `https://github.com/pulls?q=user:${s}+sort:updated`,
+      (s) => `https://jira.example.com/browse?filter=(status:${s})`,
+      (s) => `https://example.com/search?q=${s}&filter[type]=all`,
+      (s) => `https://api.example.com/v1/items?ids=${s}&ids=${s}`,
+    ];
+
+    fc.assert(
+      fc.property(
+        stringGen(ALPHANUM, 1, 10),
+        fc.constantFrom(...patterns),
+        (value, pattern) => {
+          const url = pattern(value);
+          const withFlag = url + '&__reuse_tab=1';
+
+          try {
+            new URL(url);
+            new URL(withFlag);
+          } catch {
+            return true;
+          }
+
+          return normalizeUrlForComparison(url) === normalizeUrlForComparison(withFlag);
+        }
+      ),
+      { numRuns: 500 }
+    );
+  },
+
+  'property: trailing slashes are normalized consistently': () => {
+    fc.assert(
+      fc.property(
+        stringGen(ALPHA, 1, 10),
+        fc.integer({ min: 0, max: 5 }),
+        (path, numSlashes) => {
+          const url1 = `https://example.com/${path}`;
+          const url2 = `https://example.com/${path}${'/'.repeat(numSlashes)}`;
+          return normalizeUrlForComparison(url1) === normalizeUrlForComparison(url2);
+        }
+      ),
+      { numRuns: 500 }
+    );
+  },
+
+  'property: www prefix is normalized consistently': () => {
+    fc.assert(
+      fc.property(
+        stringGen(ALPHA, 2, 10),
+        stringGen(ALPHA, 2, 5),
+        fc.boolean(),
+        (domain, tld, hasWww) => {
+          const host = hasWww ? `www.${domain}.${tld}` : `${domain}.${tld}`;
+          const url = `https://${host}/path`;
+          const normalized = normalizeUrlForComparison(url);
+          return !normalized.includes('www.');
+        }
+      ),
+      { numRuns: 500 }
+    );
+  },
+
+  'property: special characters in values encode consistently': () => {
+    const specialChars = ':(){}[]<>';
+    fc.assert(
+      fc.property(
+        stringGen(ALPHANUM + specialChars, 5, 40),
+        (value) => {
+          const url = `https://example.com?q=${encodeURIComponent(value)}&__reuse_tab=1`;
+          const normalized = normalizeUrlForComparison(url);
+          return !normalized.includes('__reuse_tab') && normalized.includes('example.com');
+        }
+      ),
+      { numRuns: 1000 }
+    );
+  },
+
+  'property: getDomain handles various URL formats': () => {
+    fc.assert(
+      fc.property(
+        stringGen(ALPHA, 2, 15),
+        stringGen(ALPHA, 2, 5),
+        fc.boolean(),
+        (domain, tld, hasWww) => {
+          const host = hasWww ? `www.${domain}.${tld}` : `${domain}.${tld}`;
+          const url = `https://${host}/path`;
+          const result = getDomain(url);
+          return result === `${domain}.${tld}`;
+        }
+      ),
+      { numRuns: 500 }
+    );
+  },
+
+  'property: isPathPrefix is asymmetric': () => {
+    fc.assert(
+      fc.property(
+        stringGen(ALPHA, 1, 10),
+        stringGen(ALPHA, 1, 10),
+        (parent, child) => {
+          const parentUrl = `https://example.com/${parent}`;
+          const childUrl = `https://example.com/${parent}/${child}`;
+          return isPathPrefix(parentUrl, childUrl) === true &&
+                 isPathPrefix(childUrl, parentUrl) === false;
+        }
+      ),
+      { numRuns: 500 }
+    );
+  },
+};
+
+let passed = 0;
+let failed = 0;
+
+console.log('Unit Tests:\n');
+for (const [name, test] of Object.entries(tests)) {
+  try {
+    test();
+    console.log(`✓ ${name}`);
+    passed++;
+  } catch (e) {
+    console.log(`✗ ${name}`);
+    console.log(`  ${e.message}`);
+    failed++;
+  }
+}
+
+console.log('\nProperty-Based Tests (500-1000 cases each):\n');
+for (const [name, test] of Object.entries(propertyTests)) {
+  try {
+    test();
+    console.log(`✓ ${name}`);
+    passed++;
+  } catch (e) {
+    console.log(`✗ ${name}`);
+    console.log(`  ${e.message}`);
+    if (e.counterexample) {
+      console.log(`  Counterexample: ${JSON.stringify(e.counterexample)}`);
+    }
+    failed++;
+  }
+}
+
+console.log(`\n${passed} passed, ${failed} failed`);
+process.exit(failed > 0 ? 1 : 0);
