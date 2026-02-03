@@ -16,6 +16,7 @@ import {
   isRootUrl,
   isPathPrefix,
 } from './url-utils.js';
+import { getLowestTabIndex } from './tab-utils.js';
 
 const charGen = (chars) => fc.integer({ min: 0, max: chars.length - 1 }).map(i => chars[i]);
 const stringGen = (chars, minLen = 1, maxLen = 20) =>
@@ -229,6 +230,20 @@ const tests = {
       matchWildcard('example.com/logout*', 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'),
       false
     );
+  },
+
+  'getLowestTabIndex: returns null for empty input': () => {
+    assert.strictEqual(getLowestTabIndex([]), null);
+  },
+
+  'getLowestTabIndex: ignores invalid entries': () => {
+    const result = getLowestTabIndex([{ index: 5 }, null, { index: 'bad' }]);
+    assert.strictEqual(result, 5);
+  },
+
+  'getLowestTabIndex: returns lowest index': () => {
+    const result = getLowestTabIndex([{ index: 7 }, { index: 2 }, { index: 9 }]);
+    assert.strictEqual(result, 2);
   },
 
   'full flow: youtrack URL with special chars matches existing tab': () => {

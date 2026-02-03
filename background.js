@@ -13,6 +13,7 @@ import {
   isRootUrl,
   isPathPrefix,
 } from './url-utils.js';
+import { getLowestTabIndex } from './tab-utils.js';
 
 const handledTabs = new Set();
 
@@ -139,6 +140,7 @@ async function handleTabReuse(tabId, url) {
     }
   };
 
+  let closedTabIndex = null;
   if (closeTabPatterns.length > 0) {
     const tabsToClose = existingTabs.filter((tab) => {
       if (!tab.url) return false;
@@ -146,6 +148,7 @@ async function handleTabReuse(tabId, url) {
     });
 
     if (tabsToClose.length > 0) {
+      closedTabIndex = getLowestTabIndex(tabsToClose);
       await Promise.all(tabsToClose.map((tab) => browser.tabs.remove(tab.id)));
     }
   }
@@ -197,6 +200,14 @@ async function handleTabReuse(tabId, url) {
         setTimeout(() => handledTabs.delete(tabId), 5000);
         return;
       }
+    }
+  }
+
+  if (closedTabIndex !== null) {
+    try {
+      await browser.tabs.move(tabId, { index: closedTabIndex });
+    } catch (error) {
+      console.warn('[Tab Reuse] Unable to move tab after closing tabs:', error);
     }
   }
 
