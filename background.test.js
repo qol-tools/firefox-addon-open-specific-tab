@@ -6,8 +6,12 @@ import {
   hasReuseFlag,
   removeReuseFlag,
   getRunJSCode,
+  hasCloseTabsFlag,
   parseRunJSCommand,
   removeRunJSFlag,
+  getCloseTabsPatterns,
+  removeCloseTabsFlag,
+  matchWildcard,
   normalizeUrlForComparison,
   isRootUrl,
   isPathPrefix,
@@ -48,9 +52,22 @@ const tests = {
     assert.ok(normalized.includes('other=value'));
   },
 
+  'normalizeUrlForComparison: removes __close_tabs param': () => {
+    const url = 'https://example.com?__close_tabs=login.microsoftonline.com/*&other=value';
+    const normalized = normalizeUrlForComparison(url);
+    assert.ok(!normalized.includes('__close_tabs'));
+    assert.ok(normalized.includes('other=value'));
+  },
+
   'normalizeUrlForComparison: sorts query params for consistent comparison': () => {
     const url1 = 'https://example.com?b=2&a=1';
     const url2 = 'https://example.com?a=1&b=2';
+    assert.strictEqual(normalizeUrlForComparison(url1), normalizeUrlForComparison(url2));
+  },
+
+  'normalizeUrlForComparison: sorts duplicate query keys consistently': () => {
+    const url1 = 'https://example.com?ids=1&ids=2';
+    const url2 = 'https://example.com?ids=2&ids=1';
     assert.strictEqual(normalizeUrlForComparison(url1), normalizeUrlForComparison(url2));
   },
 
@@ -103,6 +120,16 @@ const tests = {
   'hasReuseFlag: works with complex query strings': () => {
     const url = 'https://brunata.youtrack.cloud/agiles/141-18/current?query=has:%20-%7BSubtask%20of%7D&__reuse_tab=1';
     assert.strictEqual(hasReuseFlag(url), true);
+  },
+
+  'hasCloseTabsFlag: returns true when flag present': () => {
+    assert.strictEqual(hasCloseTabsFlag('https://example.com?__close_tabs=login.microsoftonline.com/*'), true);
+    assert.strictEqual(hasCloseTabsFlag('https://example.com?foo=bar&__close_tabs=example.com/logout*'), true);
+  },
+
+  'hasCloseTabsFlag: returns false when flag absent': () => {
+    assert.strictEqual(hasCloseTabsFlag('https://example.com'), false);
+    assert.strictEqual(hasCloseTabsFlag('https://example.com?foo=bar'), false);
   },
 
   'parseRunJSCommand: parses command without value': () => {
@@ -164,6 +191,46 @@ const tests = {
     assert.ok(result.includes('foo=bar'));
   },
 
+  'getCloseTabsPatterns: returns empty array when missing': () => {
+    assert.deepStrictEqual(getCloseTabsPatterns('https://example.com?foo=bar'), []);
+  },
+
+  'getCloseTabsPatterns: parses comma-separated patterns': () => {
+    const url = 'https://example.com?__close_tabs=login.microsoftonline.com/*,example.com/logout*';
+    assert.deepStrictEqual(getCloseTabsPatterns(url), [
+      'login.microsoftonline.com/*',
+      'example.com/logout*',
+    ]);
+  },
+
+  'removeCloseTabsFlag: removes param from URL': () => {
+    const url = 'https://example.com?foo=bar&__close_tabs=login.microsoftonline.com/*';
+    const result = removeCloseTabsFlag(url);
+    assert.ok(!result.includes('__close_tabs'));
+    assert.ok(result.includes('foo=bar'));
+  },
+
+  'matchWildcard: matches full URL patterns': () => {
+    assert.strictEqual(
+      matchWildcard('https://login.microsoftonline.com/*', 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'),
+      true
+    );
+  },
+
+  'matchWildcard: matches patterns without scheme against URL': () => {
+    assert.strictEqual(
+      matchWildcard('login.microsoftonline.com/*', 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'),
+      true
+    );
+  },
+
+  'matchWildcard: returns false for non-matching patterns': () => {
+    assert.strictEqual(
+      matchWildcard('example.com/logout*', 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'),
+      false
+    );
+  },
+
   'full flow: youtrack URL with special chars matches existing tab': () => {
     const shortcutUrl = 'https://brunata.youtrack.cloud/agiles/141-18/current?query=has:%20-%7BSubtask%20of%7D%20or%20Subtask%20of:%20(type:%20Epic)&__reuse_tab=1';
     const existingTabUrl = 'https://brunata.youtrack.cloud/agiles/141-18/current?query=has%3A%20-%7BSubtask%20of%7D%20or%20Subtask%20of%3A%20(type%3A%20Epic)';
@@ -202,7 +269,7 @@ const propertyTests = {
           return normalizeUrlForComparison(encoded1) === normalizeUrlForComparison(encoded2);
         }
       ),
-      { numRuns: 1000 }
+      { numRuns: 10000 }
     );
   },
 
@@ -222,7 +289,7 @@ const propertyTests = {
           }
         }
       ),
-      { numRuns: 1000 }
+      { numRuns: 10000 }
     );
   },
 
@@ -243,7 +310,28 @@ const propertyTests = {
           }
         }
       ),
-      { numRuns: 1000 }
+      { numRuns: 10000 }
+    );
+  },
+
+  'property: adding __close_tabs does not affect normalized URL': () => {
+    fc.assert(
+      fc.property(
+        fc.webUrl({ withQueryParameters: true }),
+        stringGen(ALPHA + '*./', 1, 30),
+        (url, pattern) => {
+          try {
+            const urlObj = new URL(url);
+            if (urlObj.searchParams.has('__close_tabs')) return true;
+
+            const withFlag = url + (url.includes('?') ? '&' : '?') + '__close_tabs=' + encodeURIComponent(pattern);
+            return normalizeUrlForComparison(url) === normalizeUrlForComparison(withFlag);
+          } catch {
+            return true;
+          }
+        }
+      ),
+      { numRuns: 10000 }
     );
   },
 
@@ -265,7 +353,7 @@ const propertyTests = {
           return normalizeUrlForComparison(url1) === normalizeUrlForComparison(url2);
         }
       ),
-      { numRuns: 1000 }
+      { numRuns: 10000 }
     );
   },
 
@@ -283,7 +371,7 @@ const propertyTests = {
           }
         }
       ),
-      { numRuns: 1000 }
+      { numRuns: 10000 }
     );
   },
 
@@ -297,7 +385,7 @@ const propertyTests = {
           return normalizeUrlForComparison(withPercent) === normalizeUrlForComparison(withPlus);
         }
       ),
-      { numRuns: 500 }
+      { numRuns: 10000 }
     );
   },
 
@@ -314,7 +402,7 @@ const propertyTests = {
           return hasReuseFlag(url) === true;
         }
       ),
-      { numRuns: 500 }
+      { numRuns: 10000 }
     );
   },
 
@@ -329,7 +417,7 @@ const propertyTests = {
           return result.command === command && result.value === value;
         }
       ),
-      { numRuns: 500 }
+      { numRuns: 10000 }
     );
   },
 
@@ -360,7 +448,7 @@ const propertyTests = {
           return normalizeUrlForComparison(url) === normalizeUrlForComparison(withFlag);
         }
       ),
-      { numRuns: 500 }
+      { numRuns: 10000 }
     );
   },
 
@@ -375,11 +463,11 @@ const propertyTests = {
           return normalizeUrlForComparison(url1) === normalizeUrlForComparison(url2);
         }
       ),
-      { numRuns: 500 }
+      { numRuns: 10000 }
     );
   },
 
-  'property: www prefix is normalized consistently': () => {
+  'property: www prefix only affects leading label': () => {
     fc.assert(
       fc.property(
         stringGen(ALPHA, 2, 10),
@@ -389,10 +477,10 @@ const propertyTests = {
           const host = hasWww ? `www.${domain}.${tld}` : `${domain}.${tld}`;
           const url = `https://${host}/path`;
           const normalized = normalizeUrlForComparison(url);
-          return !normalized.includes('www.');
+          return new URL(normalized).hostname === normalizeHostname(host);
         }
       ),
-      { numRuns: 500 }
+      { numRuns: 10000 }
     );
   },
 
@@ -407,7 +495,7 @@ const propertyTests = {
           return !normalized.includes('__reuse_tab') && normalized.includes('example.com');
         }
       ),
-      { numRuns: 1000 }
+      { numRuns: 10000 }
     );
   },
 
@@ -421,10 +509,10 @@ const propertyTests = {
           const host = hasWww ? `www.${domain}.${tld}` : `${domain}.${tld}`;
           const url = `https://${host}/path`;
           const result = getDomain(url);
-          return result === `${domain}.${tld}`;
+          return result === normalizeHostname(host);
         }
       ),
-      { numRuns: 500 }
+      { numRuns: 10000 }
     );
   },
 
@@ -440,7 +528,7 @@ const propertyTests = {
                  isPathPrefix(childUrl, parentUrl) === false;
         }
       ),
-      { numRuns: 500 }
+      { numRuns: 10000 }
     );
   },
 };
@@ -461,7 +549,7 @@ for (const [name, test] of Object.entries(tests)) {
   }
 }
 
-console.log('\nProperty-Based Tests (500-1000 cases each):\n');
+console.log('\nProperty-Based Tests (10,000 cases each):\n');
 for (const [name, test] of Object.entries(propertyTests)) {
   try {
     test();

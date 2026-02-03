@@ -5,6 +5,10 @@ import {
   getRunJSCode,
   parseRunJSCommand,
   removeRunJSFlag,
+  getCloseTabsPatterns,
+  hasCloseTabsFlag,
+  removeCloseTabsFlag,
+  matchWildcard,
   normalizeUrlForComparison,
   isRootUrl,
   isPathPrefix,
@@ -113,9 +117,11 @@ async function handleTabReuse(tabId, url) {
   handledTabs.add(tabId);
 
   const jsCode = getRunJSCode(url);
+  const closeTabPatterns = getCloseTabsPatterns(url);
   const { command, value } = parseRunJSCommand(jsCode);
   let cleanUrl = removeReuseFlag(url);
   cleanUrl = removeRunJSFlag(cleanUrl);
+  cleanUrl = removeCloseTabsFlag(cleanUrl);
   const normalizedCleanUrl = normalizeUrlForComparison(cleanUrl);
   const allTabs = await browser.tabs.query({});
   const existingTabs = allTabs.filter(t => t.id !== tabId);
@@ -133,7 +139,22 @@ async function handleTabReuse(tabId, url) {
     }
   };
 
-  const exactMatch = existingTabs.find(t => {
+  if (closeTabPatterns.length > 0) {
+    const tabsToClose = existingTabs.filter((tab) => {
+      if (!tab.url) return false;
+      return closeTabPatterns.some((pattern) => matchWildcard(pattern, tab.url));
+    });
+
+    if (tabsToClose.length > 0) {
+      await Promise.all(tabsToClose.map((tab) => browser.tabs.remove(tab.id)));
+    }
+  }
+
+  const refreshedTabs = closeTabPatterns.length > 0
+    ? (await browser.tabs.query({})).filter((tab) => tab.id !== tabId)
+    : existingTabs;
+
+  const exactMatch = refreshedTabs.find(t => {
     if (!t.url) return false;
     const normalizedTabUrl = normalizeUrlForComparison(t.url);
     return normalizedTabUrl === normalizedCleanUrl;
@@ -148,7 +169,7 @@ async function handleTabReuse(tabId, url) {
     return;
   }
 
-  const prefixMatch = existingTabs.find(t => {
+  const prefixMatch = refreshedTabs.find(t => {
     if (!t.url) return false;
     return isPathPrefix(cleanUrl, t.url);
   });
@@ -164,7 +185,7 @@ async function handleTabReuse(tabId, url) {
   if (isRootUrl(cleanUrl)) {
     const domain = getDomain(cleanUrl);
     if (domain) {
-      const domainMatch = existingTabs.find(t => {
+      const domainMatch = refreshedTabs.find(t => {
         if (!t.url) return false;
         return getDomain(t.url) === domain;
       });
@@ -193,19 +214,19 @@ async function handleTabReuse(tabId, url) {
 
 browser.webNavigation.onBeforeNavigate.addListener(async (details) => {
   if (details.frameId !== 0) return;
-  if (hasReuseFlag(details.url)) {
+  if (hasReuseFlag(details.url) || hasCloseTabsFlag(details.url)) {
     await handleTabReuse(details.tabId, details.url);
   }
 });
 
 browser.tabs.onCreated.addListener(async (tab) => {
-  if (tab.url && getDomain(tab.url) && hasReuseFlag(tab.url)) {
+  if (tab.url && getDomain(tab.url) && (hasReuseFlag(tab.url) || hasCloseTabsFlag(tab.url))) {
     await handleTabReuse(tab.id, tab.url);
   }
 });
 
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (changeInfo.url && tab.url && getDomain(tab.url) && hasReuseFlag(tab.url)) {
+  if (changeInfo.url && tab.url && getDomain(tab.url) && (hasReuseFlag(tab.url) || hasCloseTabsFlag(tab.url))) {
     await handleTabReuse(tabId, tab.url);
   }
 });

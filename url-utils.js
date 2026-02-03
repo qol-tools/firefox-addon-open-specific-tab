@@ -72,6 +72,60 @@ export function removeRunJSFlag(url) {
   }
 }
 
+export function getCloseTabsPatterns(url) {
+  try {
+    const urlObj = new URL(url);
+    const raw = urlObj.searchParams.get('__close_tabs');
+    if (!raw) {
+      return [];
+    }
+    return raw
+      .split(',')
+      .map((pattern) => pattern.trim())
+      .filter((pattern) => pattern.length > 0);
+  } catch (e) {
+    return [];
+  }
+}
+
+export function hasCloseTabsFlag(url) {
+  try {
+    const urlObj = new URL(url);
+    return urlObj.searchParams.has('__close_tabs');
+  } catch (e) {
+    return false;
+  }
+}
+
+export function removeCloseTabsFlag(url) {
+  try {
+    const urlObj = new URL(url);
+    urlObj.searchParams.delete('__close_tabs');
+    return urlObj.toString();
+  } catch (e) {
+    return url;
+  }
+}
+
+export function matchWildcard(pattern, url) {
+  if (!pattern || !url) {
+    return false;
+  }
+
+  const escaped = pattern
+    .replace(/[.+?^${}()|[\]\\]/g, '\\$&')
+    .replace(/\*/g, '.*');
+  const regex = new RegExp(`^${escaped}$`);
+
+  const candidates = [url];
+  const schemeMatch = url.match(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//);
+  if (schemeMatch) {
+    candidates.push(url.slice(schemeMatch[0].length));
+  }
+
+  return candidates.some((candidate) => regex.test(candidate));
+}
+
 export function normalizeUrlForComparison(url) {
   try {
     const urlObj = new URL(url);
@@ -85,7 +139,13 @@ export function normalizeUrlForComparison(url) {
       const params = new URLSearchParams(urlObj.search);
       params.delete('__reuse_tab');
       params.delete('__run_js');
-      const sortedParams = [...params.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+      params.delete('__close_tabs');
+      const sortedParams = [...params.entries()].sort((a, b) => {
+        if (a[0] === b[0]) {
+          return a[1].localeCompare(b[1]);
+        }
+        return a[0].localeCompare(b[0]);
+      });
       if (sortedParams.length > 0) {
         normalizedSearch = '?' + sortedParams.map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(v)}`).join('&');
       }

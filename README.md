@@ -28,6 +28,23 @@ firefox "https://example.com/page?__reuse_tab=1"
 - Root domain (e.g., `youtube.com/?__reuse_tab=1`) → switches to any tab on that domain
 - No match → opens URL normally in a new tab
 
+### Close Tabs By Pattern
+
+Use `__close_tabs` to close matching tabs before reusing. This is useful for
+“zombie” auth or error pages. Patterns are wildcard (`*`) matches against the full
+URL. If a pattern omits the scheme, it is matched against the URL without the
+scheme as well.
+
+```bash
+firefox "https://outlook.office.com/mail?__reuse_tab=1&__close_tabs=login.microsoftonline.com/*"
+```
+
+Multiple patterns can be comma-separated:
+
+```bash
+firefox "https://example.com/app?__reuse_tab=1&__close_tabs=login.microsoftonline.com/*,example.com/logout*"
+```
+
 ### Run JS Commands
 
 Execute commands on the target tab using `__run_js`:
