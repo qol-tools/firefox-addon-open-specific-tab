@@ -9,6 +9,12 @@ Quick, practical notes for working on this Firefox extension.
 2. Run tests:
    `npm test`
 
+You can also use the Makefile shortcuts:
+
+- `make test`
+- `make bump`
+- `make build`
+
 ## Property Tests
 
 Property-based tests run with 10,000 cases each by default.
