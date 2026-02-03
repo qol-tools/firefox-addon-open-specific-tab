@@ -92,7 +92,14 @@ git commit -m "chore: bump version to $NEW_VERSION"
 git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
 
 echo "Created tag v$NEW_VERSION"
+
 echo ""
-echo "To push to remote, run:"
-echo "  git push origin master"
-echo "  git push origin v$NEW_VERSION"
+read -p "Push commit and tag to origin? [y/N] " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+  git push origin master
+  git push origin "v$NEW_VERSION"
+  echo "Pushed commit and tag to origin."
+else
+  echo "Skipped pushing."
+fi
