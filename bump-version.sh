@@ -68,9 +68,9 @@ echo "  Current version: $CURRENT_VERSION"
 echo "  New version:     $NEW_VERSION"
 echo "  Bump type:       $BUMP_TYPE"
 echo ""
-read -p "Proceed with version bump? [y/N] " -n 1 -r
+read -p "Proceed with version bump? [Y/n] " -n 1 -r
 echo
-if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+if [[ $REPLY =~ ^[Nn]$ ]]; then
   echo "Aborted."
   exit 0
 fi
@@ -94,12 +94,12 @@ git tag -a "v$NEW_VERSION" -m "Release v$NEW_VERSION"
 echo "Created tag v$NEW_VERSION"
 
 echo ""
-read -p "Push commit and tag to origin? [y/N] " -n 1 -r
+read -p "Push commit and tag to origin? [Y/n] " -n 1 -r
 echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
+if [[ $REPLY =~ ^[Nn]$ ]]; then
+  echo "Skipped pushing."
+else
   git push origin master
   git push origin "v$NEW_VERSION"
   echo "Pushed commit and tag to origin."
-else
-  echo "Skipped pushing."
 fi
