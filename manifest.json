@@ -13,6 +13,9 @@
     "scripts": ["background.js"],
     "type": "module"
   },
+  "action": {
+    "default_title": "Tab Reuse Options"
+  },
   "content_scripts": [
     {
       "matches": ["<all_urls>"],

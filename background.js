@@ -17,6 +17,10 @@ import { getLowestTabIndex } from './tab-utils.js';
 
 const handledTabs = new Set();
 
+browser.action.onClicked.addListener(() => {
+  browser.runtime.openOptionsPage();
+});
+
 async function copyCookies(tabId) {
   try {
     const result = await browser.scripting.executeScript({
