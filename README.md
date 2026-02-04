@@ -86,3 +86,17 @@ GitHub Actions automatically builds, signs with Mozilla, and creates a release.
 ## License
 
 MIT
+
+## Key Event Blocking (Optional)
+
+This addon can also block page-level hotkeys on specific sites. This is useful
+when you remap Ctrl → Cmd at the OS level but want web apps to ignore the
+resulting `metaKey` presses, while keeping browser shortcuts intact.
+
+Configure patterns in the addon options (one per line, `*` wildcard). Examples:
+
+```
+https://app.example.com/*
+example.com/*
+*.example.com/*
+```

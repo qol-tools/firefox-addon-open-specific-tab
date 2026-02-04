@@ -21,6 +21,14 @@ Property-based tests run with 10,000 cases each by default.
 
 If you want heavier stress testing, increase `numRuns` values in `background.test.js`.
 
+## Commit Style
+
+We use Conventional Commits. Example:
+
+```
+feat: add configurable key event blocking
+```
+
 ## Loading The Extension (Temporary)
 
 1. Open `about:debugging` in Firefox.

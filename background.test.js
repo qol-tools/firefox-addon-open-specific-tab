@@ -18,6 +18,23 @@ import {
 } from './url-utils.js';
 import { getLowestTabIndex } from './tab-utils.js';
 
+const stripScheme = (url) => url.replace(/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//, '');
+const escapeRegExp = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+const wildcardToRegExp = (pattern) => new RegExp('^' + escapeRegExp(pattern).replace(/\\\*/g, '.*') + '$');
+const matchWildcardPattern = (pattern, url) => wildcardToRegExp(pattern).test(url);
+const matchesAnyPattern = (url, patterns) => {
+  for (const raw of patterns) {
+    const pattern = String(raw || '').trim();
+    if (!pattern) continue;
+    if (pattern.startsWith('#')) continue;
+    if (matchWildcardPattern(pattern, url)) return true;
+    if (!pattern.includes('://')) {
+      if (matchWildcardPattern(pattern, stripScheme(url))) return true;
+    }
+  }
+  return false;
+};
+
 const charGen = (chars) => fc.integer({ min: 0, max: chars.length - 1 }).map(i => chars[i]);
 const stringGen = (chars, minLen = 1, maxLen = 20) =>
   fc.array(charGen(chars), { minLength: minLen, maxLength: maxLen }).map(arr => arr.join(''));
@@ -230,6 +247,26 @@ const tests = {
       matchWildcard('example.com/logout*', 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'),
       false
     );
+  },
+
+  'key-block patterns: matches with scheme': () => {
+    const url = 'https://app.example.com/path';
+    assert.strictEqual(matchesAnyPattern(url, ['https://app.example.com/*']), true);
+  },
+
+  'key-block patterns: matches without scheme': () => {
+    const url = 'https://example.com/path';
+    assert.strictEqual(matchesAnyPattern(url, ['example.com/*']), true);
+  },
+
+  'key-block patterns: supports subdomain wildcard': () => {
+    const url = 'https://sub.example.com/app';
+    assert.strictEqual(matchesAnyPattern(url, ['*.example.com/*']), true);
+  },
+
+  'key-block patterns: ignores comment lines': () => {
+    const url = 'https://example.com/app';
+    assert.strictEqual(matchesAnyPattern(url, ['# comment', 'example.com/*']), true);
   },
 
   'getLowestTabIndex: returns null for empty input': () => {

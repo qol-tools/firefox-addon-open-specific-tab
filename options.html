@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Tab Reuse Options</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+      }
+      body {
+        font-family: system-ui, -apple-system, sans-serif;
+        margin: 24px;
+        max-width: 800px;
+      }
+      h1 {
+        font-size: 20px;
+        margin: 0 0 8px 0;
+      }
+      p {
+        margin: 8px 0 16px 0;
+      }
+      textarea {
+        width: 100%;
+        min-height: 160px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        font-size: 13px;
+        padding: 10px;
+        box-sizing: border-box;
+      }
+      .row {
+        margin: 12px 0;
+      }
+      .hint {
+        font-size: 12px;
+        opacity: 0.8;
+      }
+      button {
+        padding: 8px 14px;
+        font-size: 13px;
+      }
+      .status {
+        margin-left: 10px;
+        font-size: 12px;
+        opacity: 0.8;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Key Event Blocking</h1>
+    <p>
+      Add URL patterns (one per line). Use <code>*</code> as a wildcard. If the pattern
+      omits a scheme, it will match against the URL without the scheme.
+    </p>
+
+    <div class="row">
+      <textarea id="patterns" placeholder="example.com/*"></textarea>
+      <div class="hint">Examples: <code>https://app.example.com/*</code>, <code>example.com/*</code>, <code>*.example.com/*</code></div>
+    </div>
+
+    <div class="row">
+      <label>
+        <input type="checkbox" id="allowInEditable" />
+        Do not block inside inputs/textareas/contenteditable (recommended)
+      </label>
+    </div>
+
+    <div class="row">
+      <label>
+        <input type="checkbox" id="blockWhenMeta" />
+        Only block when the Meta (Cmd) key is held
+      </label>
+    </div>
+
+    <div class="row">
+      <button id="save">Save</button>
+      <span class="status" id="status"></span>
+    </div>
+
+    <script src="options.js"></script>
+  </body>
+</html>

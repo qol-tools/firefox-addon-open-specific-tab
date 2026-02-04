@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Tab Reuse",
   "version": "1.5.0",
-  "permissions": ["tabs", "webNavigation", "scripting", "clipboardWrite", "cookies"],
+  "permissions": ["tabs", "webNavigation", "scripting", "clipboardWrite", "cookies", "storage"],
   "host_permissions": ["<all_urls>"],
   "browser_specific_settings": {
     "gecko": {
@@ -12,5 +12,16 @@
   "background": {
     "scripts": ["background.js"],
     "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content-script.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
   }
 }
